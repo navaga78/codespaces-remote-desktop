@@ -99,19 +99,21 @@ fi
 # ---- 5. noVNC（网页版，端口 6080）----
 log "[5/5] 启动 noVNC (端口 ${NOVNC_PORT})"
 write_novnc_index
-# 注意：--web 必须是绝对路径（~ 不会在 --web=~/x 里被展开，会导致 websockify 退出码 1）
-# 也不用 --log-file（部分 websockify 版本不支持），直接重定向输出到日志
-if command -v websockify >/dev/null 2>&1; then
-  nohup websockify --web="$WWW_DIR" --heartbeat=30 \
-        "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
-        >> "$LOG_DIR/websockify.log" 2>&1 &
-  WS_PID=$!
-else
-  nohup python3 -m websockify --web="$WWW_DIR" --heartbeat=30 \
-        "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
-        >> "$LOG_DIR/websockify.log" 2>&1 &
-  WS_PID=$!
-fi
+# 注意 1：--web 必须是绝对路径（~ 不会在 --web=~/x 里被展开，会导致 websockify 退出码 1）
+# 注意 2：不要用 --log-file（部分版本不支持），直接重定向到日志
+# 注意 3：优先用 pip 装的新版 websockify（Ubuntu 22.04 自带的 0.10.x 有 WS 升级 bug，
+#         会把握手原样转发给 x11vnc，表现为「页面能打开但连不上」）
+WS_CMD=""
+for cand in "$HOME/.local/bin/websockify" "$HOME/.local/bin/ws-websockify" "$(command -v websockify 2>/dev/null)"; do
+  if [ -n "$cand" ] && [ -x "$cand" ]; then WS_CMD="$cand"; break; fi
+done
+[ -z "$WS_CMD" ] && WS_CMD="python3 -m websockify"
+log "  使用 websockify: $WS_CMD"
+
+nohup $WS_CMD --web="$WWW_DIR" \
+      "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
+      >> "$LOG_DIR/websockify.log" 2>&1 &
+WS_PID=$!
 
 for _ in $(seq 1 30); do
   if port_open "${NOVNC_PORT}"; then
@@ -137,6 +139,20 @@ if port_open "${NOVNC_PORT}"; then
 else
   log "✗ noVNC 仍未监听 ${NOVNC_PORT}，看 $LOG_DIR/websockify.log："
   tail -30 "$LOG_DIR/websockify.log" 2>/dev/null
+fi
+
+# ---- 5b. WebSocket 升级自检（关键：101 = 正常，其它 = websockify 有问题）----
+if command -v curl >/dev/null 2>&1 && port_open "${NOVNC_PORT}"; then
+  WS_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 \
+    -H "Connection: Upgrade" -H "Upgrade: websocket" \
+    -H "Sec-WebSocket-Version: 13" \
+    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+    "http://127.0.0.1:${NOVNC_PORT}/websockify" 2>/dev/null)"
+  if [ "$WS_CODE" = "101" ]; then
+    log "  ✓ WebSocket 握手自检通过 (HTTP 101)"
+  else
+    log "  ✗ WebSocket 握手自检失败 (HTTP ${WS_CODE}) —— websockify 没升级连接，浏览器会连不上"
+  fi
 fi
 
 # ---- 6. 自动打开 Chrome ----
