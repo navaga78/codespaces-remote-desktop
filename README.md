@@ -15,17 +15,27 @@
 
 ### 第 2 步：点一个「国家按钮」
 
-下面的按钮会自动带上机房地区参数，点了之后 GitHub 就会在对应国家/地区的机房给你开一台电脑。
-> 如果按钮打开后让你选仓库，选你刚 fork 出来的那个仓库即可（通常排第一个）。
+下面的按钮已经把**机房地区参数**写进链接里，点了之后 GitHub 就会在对应国家/地区的机房给你开一台电脑。
+按钮用的是相对链接，所以**你 fork 之后不用改任何东西**，直接点即可。
 
 | 想要的 IP 归属地 | 按钮 | Codespaces 机房 |
 | :--- | :---: | :--- |
-| 🇺🇸 **美国**（西部 · 华盛顿州） | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](../../../codespaces/new?hide_repo_select=true&ref=main&location=WestUs2) | `WestUs2` |
-| 🇺🇸 **美国**（东部 · 弗吉尼亚州） | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](../../../codespaces/new?hide_repo_select=true&ref=main&location=EastUs) | `EastUs` |
-| 🇳🇱 **欧洲西部**（荷兰 · 阿姆斯特丹） | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](../../../codespaces/new?hide_repo_select=true&ref=main&location=WestEurope) | `WestEurope` |
-| 🇸🇬 **东南亚**（新加坡） | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](../../../codespaces/new?hide_repo_select=true&ref=main&location=SouthEastAsia) | `SouthEastAsia` |
+| 🇺🇸 **美国**（西部 · 华盛顿州） | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](../../../../codespaces/new?ref=main&location=WestUs2) | `WestUs2` |
+| 🇺🇸 **美国**（东部 · 弗吉尼亚州） | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](../../../../codespaces/new?ref=main&location=EastUs) | `EastUs` |
+| 🇳🇱 **欧洲西部**（荷兰 · 阿姆斯特丹） | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](../../../../codespaces/new?ref=main&location=WestEurope) | `WestEurope` |
+| 🇸🇬 **东南亚**（新加坡） | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](../../../../codespaces/new?ref=main&location=SouthEastAsia) | `SouthEastAsia` |
 
-按钮对应的完整链接（若浏览器屏蔽了相对链接，可直接复制，把 `你的用户名` 换成你的 GitHub 用户名）：
+> 打开后如果让你选仓库，选你刚 fork 出来的那个即可（地区已经按按钮预选好了）。
+
+**想要真正的「一步到位」？** 把下面这行粘到终端里（会把 `美国西部` 换成你想要的国家，用户名自动识别）：
+
+```bash
+gh codespace create -R "$(gh api user --jq .login)/codespaces-remote-desktop" -l WestUs2 -w
+```
+
+`-l` 可选值：`WestUs2`（美西）· `EastUs`（美东）· `WestEurope`（欧洲西部·荷兰）· `SouthEastAsia`（新加坡）。
+
+对应的完整网页链接（把 `你的用户名` 换成你的 GitHub 用户名，例如 `navaga78`）：
 
 ```
 https://github.com/codespaces/new?hide_repo_select=true&ref=main&location=WestUs2&repo=你的用户名/codespaces-remote-desktop
