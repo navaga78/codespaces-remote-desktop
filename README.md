@@ -102,6 +102,9 @@ Codespaces 的机器就跑在指定机房，出口 IP 就在那个国家/地区�
 
 ## ❓ 常见问题
 
+**Q：noVNC 页面能打开，但点「连接」提示无法连接服务器？**
+说明 websockify（6080）起来了、但 x11vnc（5900）没起来，或者反过来。终端里跑 `rd-status`，看 5900 / 6080 哪一个是「✗ 未监听」，然后 `rd-start` 重启一次即可。日志都在 `~/.remote-desktop/` 下。
+
 **Q：免费的 Codespaces 额度够用吗？**
 GitHub 免费账号每月有 **120 核时**（2 核机器约 60 小时）；4 核机器减半。用完按小时计费，建议在 <https://github.com/settings/billing> 设一个消费上限。
 
