@@ -99,11 +99,19 @@ fi
 # ---- 5. noVNC（网页版，端口 6080）----
 log "[5/5] 启动 noVNC (端口 ${NOVNC_PORT})"
 write_novnc_index
-# websockify：bind 0.0.0.0，避免 IPv6 only
-nohup websockify --web="$WWW_DIR" --heartbeat=30 --log-file="$LOG_DIR/websockify.log" \
-      "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
-      > "$LOG_DIR/websockify.out" 2>&1 &
-WS_PID=$!
+# 注意：--web 必须是绝对路径（~ 不会在 --web=~/x 里被展开，会导致 websockify 退出码 1）
+# 也不用 --log-file（部分 websockify 版本不支持），直接重定向输出到日志
+if command -v websockify >/dev/null 2>&1; then
+  nohup websockify --web="$WWW_DIR" --heartbeat=30 \
+        "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
+        >> "$LOG_DIR/websockify.log" 2>&1 &
+  WS_PID=$!
+else
+  nohup python3 -m websockify --web="$WWW_DIR" --heartbeat=30 \
+        "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
+        >> "$LOG_DIR/websockify.log" 2>&1 &
+  WS_PID=$!
+fi
 
 for _ in $(seq 1 30); do
   if port_open "${NOVNC_PORT}"; then
@@ -113,7 +121,21 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 if ! port_open "${NOVNC_PORT}"; then
-  log "✗ noVNC 没监听 6080，看 $LOG_DIR/websockify.log："
+  log "  ⚠ 第一次启动没起来，日志："
+  tail -20 "$LOG_DIR/websockify.log" 2>/dev/null
+  log "  用最简参数再试一次…"
+  nohup websockify "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
+        >> "$LOG_DIR/websockify.log" 2>&1 &
+  WS_PID=$!
+  for _ in $(seq 1 20); do
+    port_open "${NOVNC_PORT}" && break
+    sleep 1
+  done
+fi
+if port_open "${NOVNC_PORT}"; then
+  log "  ✓ noVNC 已监听 ${NOVNC_PORT}"
+else
+  log "✗ noVNC 仍未监听 ${NOVNC_PORT}，看 $LOG_DIR/websockify.log："
   tail -30 "$LOG_DIR/websockify.log" 2>/dev/null
 fi
 
