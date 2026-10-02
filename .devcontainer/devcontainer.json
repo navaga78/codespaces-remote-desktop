@@ -1,0 +1,38 @@
+{
+  "name": "Cloud Desktop (XFCE + Chrome + noVNC)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+
+  // 桌面服务端口：6080 = noVNC 网页版远程桌面（在浏览器里直接用）
+  "forwardPorts": [6080],
+  "portsAttributes": {
+    "6080": {
+      "label": "🖥️ 远程桌面 (noVNC)",
+      "onAutoForward": "openPreview"
+    }
+  },
+
+  "remoteEnv": {
+    "DISPLAY": ":1",
+    // 远程桌面分辨率，可在 Codespaces secret 里改成 1920x1080
+    "VNC_RESOLUTION": "1600x900",
+    // 桌面启动后 Chrome 自动打开的第一个页面（用于确认出口 IP 国家）
+    "START_URL": "https://ipinfo.io/json",
+    // 是否在桌面启动后自动打开 Chrome
+    "AUTO_OPEN_CHROME": "true",
+    // 桌面界面语言（zh_CN.UTF-8 / en_US.UTF-8）
+    "DESKTOP_LANG": "zh_CN.UTF-8",
+    // 可选：给 VNC 加密码（不设置则无密码，请勿分享你的桌面地址）
+    "VNC_PASSWORD": "",
+    // 可选：想让 Chrome 走指定国家出口时填，例如 socks5://user:pass@host:port
+    "PROXY_URL": "",
+    "PROXY_BYPASS": "localhost;127.0.0.1;*.github.dev"
+  },
+
+  "postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
+  "postStartCommand": "bash .devcontainer/scripts/start-desktop.sh",
+  "postAttachCommand": "bash .devcontainer/scripts/show-info.sh"
+}
