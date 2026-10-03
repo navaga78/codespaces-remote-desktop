@@ -41,6 +41,8 @@
   },
 
   "postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
+  // postStart：每次 codespace 启动（含休眠唤醒）都完整拉起桌面 + 守护进程
   "postStartCommand": "bash .devcontainer/scripts/start-desktop.sh",
-  "postAttachCommand": "bash .devcontainer/scripts/show-info.sh"
+  // postAttach：每次打开终端/网页编辑器时自检一次，掉线就后台补拉，再打印访问信息
+  "postAttachCommand": "bash .devcontainer/scripts/ensure-desktop.sh; bash .devcontainer/scripts/show-info.sh"
 }
