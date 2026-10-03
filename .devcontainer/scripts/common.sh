@@ -2,7 +2,25 @@
 # 公共变量与工具函数，被其它脚本 source 使用
 # shellcheck shell=bash
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}")" && pwd)"
+# 解析真实脚本目录。
+# 关键：rd-* 是 /usr/local/bin 下的软链接，必须 readlink 到真实路径，
+# 否则 dirname 得到 /usr/local/bin，source common.sh 会失败（VNC_PORT 未绑定）。
+_rd_src="${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}"
+if [ -L "$_rd_src" ] || [ -e "$_rd_src" ]; then
+  _rd_real="$(readlink -f "$_rd_src" 2>/dev/null || echo "$_rd_src")"
+else
+  _rd_real="$_rd_src"
+fi
+SCRIPT_DIR="$(cd "$(dirname "$_rd_real")" 2>/dev/null && pwd)"
+
+# 兜底：如果旁边没有 common.sh（比如被直接 cat 执行），按仓库固定位置找
+if [ ! -f "$SCRIPT_DIR/common.sh" ]; then
+  for _c in "/workspaces/codespaces-remote-desktop/.devcontainer/scripts" \
+            "$(pwd)/.devcontainer/scripts"; do
+    if [ -f "$_c/common.sh" ]; then SCRIPT_DIR="$_c"; break; fi
+  done
+fi
+unset _rd_src _rd_real _c
 
 export DISPLAY="${DISPLAY:-:1}"
 VNC_RESOLUTION="${VNC_RESOLUTION:-1600x900}"
