@@ -1,10 +1,20 @@
 # ☁️ codespaces-remote-desktop
 
+[简体中文](README.md) · English
+
+[![Build desktop image](https://github.com/navaga78/codespaces-remote-desktop/actions/workflows/build-image.yml/badge.svg)](https://github.com/navaga78/codespaces-remote-desktop/actions/workflows/build-image.yml)
+
 Spin up a **full remote Linux desktop with Chrome**, running on **GitHub Codespaces' free compute** — no
 software to install, no server of your own. **Pick a country → click once → a complete desktop appears in
 your browser with Chrome already open.**
 
 The machine runs inside a GitHub datacenter, so its **public IP is located in the country/region you picked.**
+
+> ⚡ **It starts fast**: the desktop image is prebuilt and published to the public GHCR
+> (`ghcr.io/navaga78/codespaces-remote-desktop:latest`) and rebuilt weekly. `devcontainer.json` reuses its
+> layers via `cacheFrom`, so the **first launch usually takes 30 seconds to 2 minutes**, and every later
+> launch takes a few seconds. If the cache can't be pulled (it only logs a warning), the image is built from
+> the Dockerfile as usual — it never fails.
 
 ---
 
@@ -18,7 +28,7 @@ the config freely).
 ### 2. Click a "country button"
 
 Each button carries the datacenter region parameter, so GitHub creates the machine in that country/region.
-These are relative links, so **you don't need to change anything after forking**.
+These are **relative links**, so **you don't need to change anything after forking**.
 
 | Desired IP location | Button | Codespaces region |
 | :--- | :---: | :--- |
@@ -38,9 +48,10 @@ gh codespace create -R "$(gh api user --jq .login)/codespaces-remote-desktop" -l
 
 `-l` accepts: `WestUs2` (US West) · `EastUs` (US East) · `WestEurope` (Netherlands) · `SouthEastAsia` (Singapore).
 
-### 3. Wait 3–5 minutes, then open the desktop
+### 3. Wait a few seconds, then open the desktop
 
-The first launch builds the image (later launches take seconds). When it's ready:
+Image layers are prebuilt, so it usually takes **30 seconds to 2 minutes** (up to ~4 minutes if no cache is
+hit at all). When it's ready:
 
 1. Open the **PORTS** panel in VS Code → find **6080**
 2. Click the 🌐 globe icon (or visit `https://<your-codespace-name>-6080.app.github.dev`)
@@ -66,10 +77,13 @@ region**.
 2. Name it `PROXY_URL`, value = your proxy endpoint, e.g.
    - `http://user:password@uk.proxy.example.com:8000`
    - `socks5://user:password@jp.proxy.example.com:1080`
-   
+
    (Most residential proxy providers offer per-country entry nodes, e.g. `uk.host.com:10001`.)
 3. **Rebuild** the codespace (secrets only apply after a rebuild)
 4. Chrome now exits through that country. Run `rd-ip` or open <https://ipinfo.io/json> to verify.
+
+> Note: the proxy affects Chrome (and anything reading `http_proxy`), not the machine's system-level IP.
+> Add `http_proxy` / `https_proxy` secrets too if you need system-wide proxying.
 
 ---
 
@@ -81,7 +95,7 @@ region**.
 | `rd-stop` | Stop the desktop (codespace keeps running) |
 | `rd-chrome https://example.com` | Open a URL on the remote desktop |
 | `rd-ip` | Show the current exit IP and country |
-| `rd-status` | Processes + ports + all logs (run this first when debugging) |
+| `rd-status` | Ports + processes + logs (**run this first when debugging**) |
 | `rd-info` | Print the desktop URL |
 
 Optional Codespaces secrets:
@@ -98,11 +112,26 @@ Optional Codespaces secrets:
 
 ## ❓ FAQ
 
+**Q: Why is there still a wait if the image is prebuilt?**
+Only the **build layers** are cached. Codespaces still has to provision a VM, attach storage and run
+`postStartCommand` to bring up the desktop. With cache: 30s–2min. Without cache (e.g. the upstream image is
+unavailable): a full build from the Dockerfile, ~4 minutes.
+
 **Q: noVNC page loads but "cannot connect to server"?**
 The image already fixes the usual cause (it ships noVNC 1.7.0 + the latest pip `websockify`; Ubuntu's
 websockify 0.10.x has a WebSocket upgrade bug). If it still happens, run `rd-status` to see which of
 5900/6080 is not listening, then `rd-start`. The startup script self-tests the WebSocket handshake and prints
 `✓ WebSocket handshake OK` — the expected status code is `101`.
+
+**Q: Does the public GHCR image leak my privacy?**
+No. The image contains exactly what the Dockerfile lists (already public in this repo). It contains **no**
+passwords, tokens, SSH keys, browser data or home-directory files — the build runs on an ephemeral GitHub
+runner using only repository content. Everything you create at runtime stays in the container's writable
+layer and is never pushed.
+
+**Q: I don't want to use the upstream GHCR image.**
+Remove the `cacheFrom` line from `.devcontainer/devcontainer.json`; it will build from the Dockerfile locally
+(slower, but fully self-contained).
 
 **Q: How much free compute do I get?**
 Free accounts get **120 core-hours/month** (~60 hours on a 2-core machine; halved on 4-core). Set a spending
@@ -145,9 +174,33 @@ Browser ──HTTPS──> noVNC(6080) ──> websockify ──> x11vnc(5900) �
 ```
 
 - `.devcontainer/Dockerfile`: Ubuntu 22.04 + XFCE + x11vnc + **noVNC 1.7.0** + **latest pip websockify** + Google Chrome + CJK fonts/IME
-- `.devcontainer/devcontainer.json`: forwards port 6080, runs `start-desktop.sh` on every start, and reuses the prebuilt image from GHCR via `cacheFrom`
-- `.github/workflows/build-image.yml`: weekly build of the desktop image to GHCR so forks start fast
+- `.devcontainer/devcontainer.json`: forwards port 6080, runs `start-desktop.sh` on every start, and reuses the prebuilt GHCR image layers via `cacheFrom`
+- `.devcontainer/scripts/start-desktop.sh`: starts Xvfb → XFCE → x11vnc → noVNC → Chrome, with a readiness check per step and a WebSocket handshake self-test (must be `101`)
+- `.github/workflows/build-image.yml`: builds and pushes the image to GHCR every Monday 03:17 UTC (and whenever `.devcontainer` changes), using `type=inline` cache metadata so forks can hit the cache too
 - The region comes from the `location` parameter used when creating the codespace
+
+## 📁 Layout
+
+```
+.
+├── .devcontainer/
+│   ├── devcontainer.json        # ports, env, lifecycle scripts, cacheFrom
+│   ├── Dockerfile               # desktop image
+│   └── scripts/
+│       ├── common.sh            # shared vars (incl. rd-* symlink resolution)
+│       ├── post-create.sh       # shortcuts / desktop icons
+│       ├── start-desktop.sh     # starts the desktop on every codespace start
+│       ├── stop-desktop.sh
+│       ├── open-chrome.sh
+│       ├── check-ip.sh          # show exit IP and country
+│       ├── status.sh            # rd-status: ports/processes/logs
+│       └── show-info.sh         # print the desktop URL
+├── .github/workflows/
+│   └── build-image.yml          # weekly image build → GHCR
+├── README.md
+├── README.en.md
+└── LICENSE
+```
 
 ## 📄 License
 
