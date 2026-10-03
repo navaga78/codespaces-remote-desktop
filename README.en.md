@@ -96,6 +96,7 @@ region**.
 | `rd-chrome https://example.com` | Open a URL on the remote desktop |
 | `rd-ip` | Show the current exit IP and country |
 | `rd-status` | Ports + processes + logs (**run this first when debugging**) |
+| `rd-fix` | Self-check and restart anything that dropped (lighter than `rd-start`) |
 | `rd-info` | Print the desktop URL |
 
 Optional Codespaces secrets:
@@ -118,10 +119,22 @@ Only the **build layers** are cached. Codespaces still has to provision a VM, at
 unavailable): a full build from the Dockerfile, ~4 minutes.
 
 **Q: noVNC page loads but "cannot connect to server"?**
-The image already fixes the usual cause (it ships noVNC 1.7.0 + the latest pip `websockify`; Ubuntu's
-websockify 0.10.x has a WebSocket upgrade bug). If it still happens, run `rd-status` to see which of
-5900/6080 is not listening, then `rd-start`. The startup script self-tests the WebSocket handshake and prints
-`✓ WebSocket handshake OK` — the expected status code is `101`.
+Run `rd-status` first and check which port is down:
+
+- **6080 not listening** → the page wouldn't load at all; run `rd-start`.
+- **6080 listening, 5900 not** → the page opens but the desktop won't connect. If the log shows
+  `caught signal: 1` (SIGHUP), the parent shell of the startup script took x11vnc down with it.
+  This repo fixes that with **`setsid` (detach from the session)** plus a **watchdog that heals every 5 s**.
+  If you forked an older revision, **Sync fork → Rebuild container** first.
+- The image also ships noVNC 1.7.0 + the latest pip `websockify` (Ubuntu's 0.10.x has a WebSocket upgrade bug).
+
+The startup script self-tests the WebSocket handshake and prints `✓ WebSocket handshake OK` — the expected
+status code is `101`. Logs live in `~/.remote-desktop/`.
+
+**Q: Can the desktop drop while I'm away?**
+Not for long. `watchdog.sh` checks Xvfb / XFCE / x11vnc / websockify every 5 seconds and restarts whatever
+died; `rd-status` shows `Watchdog: ✓ running`. `rd-stop` writes a `STOPPED` flag first, so it never fights
+with the watchdog.
 
 **Q: Does the public GHCR image leak my privacy?**
 No. The image contains exactly what the Dockerfile lists (already public in this repo). It contains **no**
@@ -175,7 +188,9 @@ Browser ──HTTPS──> noVNC(6080) ──> websockify ──> x11vnc(5900) �
 
 - `.devcontainer/Dockerfile`: Ubuntu 22.04 + XFCE + x11vnc + **noVNC 1.7.0** + **latest pip websockify** + Google Chrome + CJK fonts/IME
 - `.devcontainer/devcontainer.json`: forwards port 6080, runs `start-desktop.sh` on every start, and reuses the prebuilt GHCR image layers via `cacheFrom`
-- `.devcontainer/scripts/start-desktop.sh`: starts Xvfb → XFCE → x11vnc → noVNC → Chrome, with a readiness check per step and a WebSocket handshake self-test (must be `101`)
+- `.devcontainer/scripts/start-desktop.sh`: starts Xvfb → XFCE → x11vnc → noVNC → Chrome, with a readiness check per step and a WebSocket handshake self-test (must be `101`). Every background process is launched with `setsid` so the SIGHUP sent when `postStart` finishes cannot kill it
+- `.devcontainer/scripts/watchdog.sh`: watchdog that checks Xvfb / XFCE / x11vnc / websockify every 5 s and restarts anything that died
+- `.devcontainer/scripts/ensure-desktop.sh`: self-check on every attach (`rd-fix`); restarts missing services in the background
 - `.github/workflows/build-image.yml`: builds and pushes the image to GHCR every Monday 03:17 UTC (and whenever `.devcontainer` changes), using `type=inline` cache metadata so forks can hit the cache too
 - The region comes from the `location` parameter used when creating the codespace
 
@@ -190,7 +205,9 @@ Browser ──HTTPS──> noVNC(6080) ──> websockify ──> x11vnc(5900) �
 │       ├── common.sh            # shared vars (incl. rd-* symlink resolution)
 │       ├── post-create.sh       # shortcuts / desktop icons
 │       ├── start-desktop.sh     # starts the desktop on every codespace start
-│       ├── stop-desktop.sh
+│       ├── watchdog.sh          # watchdog: check every 5s, restart on failure
+│       ├── ensure-desktop.sh    # rd-fix: self-check + repair on attach
+│       ├── stop-desktop.sh      # rd-stop: stops the desktop (and the watchdog)
 │       ├── open-chrome.sh
 │       ├── check-ip.sh          # show exit IP and country
 │       ├── status.sh            # rd-status: ports/processes/logs
