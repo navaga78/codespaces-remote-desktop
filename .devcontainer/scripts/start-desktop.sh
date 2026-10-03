@@ -9,12 +9,15 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 log "==================== 启动远程桌面 ===================="
 
-# ---- 0. 清理上一次的进程 ----
-pkill -f "websockify .*${NOVNC_PORT}" >/dev/null 2>&1
-pkill -f "x11vnc"                     >/dev/null 2>&1
-pkill -f "xfce4-session|startxfce4|xfwm4|xfce4-panel|xfsettingsd|xfce4-terminal" >/dev/null 2>&1
-pkill -f "Xvfb ${DISPLAY}"            >/dev/null 2>&1
+# ---- 0. 清理上一次的进程（宁可多杀，避免残留进程占端口）----
+pkill -9 -f "websockify" >/dev/null 2>&1
+pkill -9 -f "x11vnc"     >/dev/null 2>&1
+pkill -9 -f "xfce4-session|startxfce4|xfwm4|xfce4-panel|xfsettingsd|xfdesktop|xfce4-terminal" >/dev/null 2>&1
+pkill -9 -f "Xvfb ${DISPLAY}" >/dev/null 2>&1
 sleep 1
+# 二次确认：还有残留 websockify 就逐个杀
+for _p in $(pgrep -f "websockify" 2>/dev/null); do kill -9 "$_p" 2>/dev/null; done
+unset _p
 
 DISPLAY_NUM="${DISPLAY#:}"
 rm -f "/tmp/.X${DISPLAY_NUM}-lock" "/tmp/.X11-unix/X${DISPLAY_NUM}"
@@ -148,11 +151,33 @@ if command -v curl >/dev/null 2>&1 && port_open "${NOVNC_PORT}"; then
     -H "Sec-WebSocket-Version: 13" \
     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
     "http://127.0.0.1:${NOVNC_PORT}/websockify" 2>/dev/null)"
-  if [ "$WS_CODE" = "101" ]; then
-    log "  ✓ WebSocket 握手自检通过 (HTTP 101)"
-  else
-    log "  ✗ WebSocket 握手自检失败 (HTTP ${WS_CODE}) —— websockify 没升级连接，浏览器会连不上"
+  log "  WebSocket 握手自检 HTTP ${WS_CODE}"
+fi
+
+# ---- 5c. 自检失败时自动升级 websockify 再试一次 ----
+if [ "${WS_CODE:-000}" != "101" ] && [ ! -x "$HOME/.local/bin/websockify" ] \
+   && command -v pip3 >/dev/null 2>&1; then
+  log "  ⚠ 握手没通过，自动 pip 安装新版 websockify 后重试…"
+  pip3 install --user -q -U websockify >/dev/null 2>&1 \
+    || pip3 install --user -q -U --break-system-packages websockify >/dev/null 2>&1
+  if [ -x "$HOME/.local/bin/websockify" ]; then
+    pkill -9 -f websockify >/dev/null 2>&1; sleep 1
+    nohup "$HOME/.local/bin/websockify" --web="$WWW_DIR" \
+          "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
+          >> "$LOG_DIR/websockify.log" 2>&1 &
+    sleep 3
+    WS_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 \
+      -H "Connection: Upgrade" -H "Upgrade: websocket" \
+      -H "Sec-WebSocket-Version: 13" \
+      -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+      "http://127.0.0.1:${NOVNC_PORT}/websockify" 2>/dev/null)"
+    log "  换用新版 websockify 后自检 HTTP ${WS_CODE}"
   fi
+fi
+if [ "${WS_CODE:-000}" = "101" ]; then
+  log "  ✓ WebSocket 握手正常，浏览器可以连了"
+else
+  log "  ✗ WebSocket 握手仍失败 (HTTP ${WS_CODE:-000})，浏览器会连不上；日志：$LOG_DIR/websockify.log"
 fi
 
 # ---- 6. 自动打开 Chrome ----
