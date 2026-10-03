@@ -5,28 +5,35 @@
 set +e  # 重要：每一步都自己检测失败并继续，让用户能看到完整日志
 
 # shellcheck source=./common.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+# 软链接调用（rd-start 等）时 dirname 会得到 /usr/local/bin，必须 readlink 到真实路径
+_rd_self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+source "$(cd "$(dirname "$_rd_self")" && pwd)/common.sh"
+unset _rd_self
 
 log "==================== 启动远程桌面 ===================="
 
 # ---- 0. 清理上一次的进程（宁可多杀，避免残留进程占端口）----
+pkill -9 -f "watchdog.sh" >/dev/null 2>&1
 pkill -9 -f "websockify" >/dev/null 2>&1
 pkill -9 -f "x11vnc"     >/dev/null 2>&1
 pkill -9 -f "xfce4-session|startxfce4|xfwm4|xfce4-panel|xfsettingsd|xfdesktop|xfce4-terminal" >/dev/null 2>&1
 pkill -9 -f "Xvfb ${DISPLAY}" >/dev/null 2>&1
 sleep 1
-# 二次确认：还有残留 websockify 就逐个杀
-for _p in $(pgrep -f "websockify" 2>/dev/null); do kill -9 "$_p" 2>/dev/null; done
+# 二次确认：还有残留就逐个杀
+for _p in $(pgrep -f "websockify|watchdog.sh" 2>/dev/null); do kill -9 "$_p" 2>/dev/null; done
 unset _p
+rm -f "$LOG_DIR/STOPPED"   # 清掉「已停止」标志，允许守护进程工作
 
 DISPLAY_NUM="${DISPLAY#:}"
 rm -f "/tmp/.X${DISPLAY_NUM}-lock" "/tmp/.X11-unix/X${DISPLAY_NUM}"
 
 # ---- 1. 虚拟屏幕 Xvfb ----
 log "[1/5] 启动虚拟屏幕 Xvfb ${DISPLAY} (${VNC_RESOLUTION})"
-nohup Xvfb "${DISPLAY}" -screen 0 "${VNC_RESOLUTION}x24" -nolisten tcp -ac \
+# setsid：脱离当前会话与进程组。postStart 的 shell 退出时会发 SIGHUP，
+# 仅靠 nohup 不够（x11vnc 自己注册了 SIGHUP handler，会覆盖 nohup 的设置而被杀）。
+$RD_SPAWN nohup Xvfb "${DISPLAY}" -screen 0 "${VNC_RESOLUTION}x24" -nolisten tcp -ac \
       +extension RANDR +extension GLX +extension RENDER \
-      > "$LOG_DIR/xvfb.log" 2>&1 &
+      > "$LOG_DIR/xvfb.log" 2>&1 </dev/null &
 XVFB_PID=$!
 for _ in $(seq 1 40); do
   if xdpyinfo -display "${DISPLAY}" >/dev/null 2>&1; then
@@ -50,14 +57,14 @@ export XDG_CURRENT_DESKTOP=XFCE
 # 优先 dbus-run-session；它在 dbus 退出会顺手清理 XFCE，更稳
 if command -v dbus-run-session >/dev/null 2>&1; then
   if command -v startxfce4 >/dev/null 2>&1; then
-    nohup dbus-run-session -- startxfce4 > "$LOG_DIR/xfce.log" 2>&1 &
+    $RD_SPAWN nohup dbus-run-session -- startxfce4 > "$LOG_DIR/xfce.log" 2>&1 </dev/null &
   elif command -v xfce4-session >/dev/null 2>&1; then
-    nohup dbus-run-session -- xfce4-session > "$LOG_DIR/xfce.log" 2>&1 &
+    $RD_SPAWN nohup dbus-run-session -- xfce4-session > "$LOG_DIR/xfce.log" 2>&1 </dev/null &
   else
-    nohup dbus-run-session -- xfwm4 > "$LOG_DIR/xfce.log" 2>&1 &
+    $RD_SPAWN nohup dbus-run-session -- xfwm4 > "$LOG_DIR/xfce.log" 2>&1 </dev/null &
   fi
 else
-  nohup startxfce4 > "$LOG_DIR/xfce.log" 2>&1 &
+  $RD_SPAWN nohup startxfce4 > "$LOG_DIR/xfce.log" 2>&1 </dev/null &
 fi
 XFCE_PID=$!
 log "  XFCE 已 fork (pid=${XFCE_PID})，等待 5s 让窗口管理器起来…"
@@ -68,7 +75,7 @@ xset -display "${DISPLAY}" s off -dpms s noblank >/dev/null 2>&1 || true
 
 # ---- 3. 中文输入法（可选）----
 if command -v fcitx >/dev/null 2>&1 && ! pgrep -x fcitx >/dev/null 2>&1; then
-  nohup env DISPLAY="${DISPLAY}" fcitx -d > "$LOG_DIR/fcitx.log" 2>&1 &
+  $RD_SPAWN nohup env DISPLAY="${DISPLAY}" fcitx -d > "$LOG_DIR/fcitx.log" 2>&1 </dev/null &
 fi
 
 # ---- 4. x11vnc ----
@@ -82,7 +89,7 @@ if [ -n "$VNC_PASSWORD" ]; then
 else
   VNC_ARGS+=(-nopw)
 fi
-nohup x11vnc "${VNC_ARGS[@]}" > "$LOG_DIR/x11vnc.out" 2>&1 &
+$RD_SPAWN nohup x11vnc "${VNC_ARGS[@]}" > "$LOG_DIR/x11vnc.out" 2>&1 </dev/null &
 VNC_PID=$!
 
 # 等 x11vnc 监听 5900
@@ -115,9 +122,9 @@ done
 unset _c
 log "  使用 websockify: $WS_CMD"
 
-nohup $WS_CMD --web="$WWW_DIR" \
+$RD_SPAWN nohup $WS_CMD --web="$WWW_DIR" \
       "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
-      >> "$LOG_DIR/websockify.log" 2>&1 &
+      >> "$LOG_DIR/websockify.log" 2>&1 </dev/null &
 WS_PID=$!
 
 for _ in $(seq 1 30); do
@@ -131,8 +138,8 @@ if ! port_open "${NOVNC_PORT}"; then
   log "  ⚠ 第一次启动没起来，日志："
   tail -20 "$LOG_DIR/websockify.log" 2>/dev/null
   log "  用最简参数再试一次…"
-  nohup websockify "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
-        >> "$LOG_DIR/websockify.log" 2>&1 &
+  $RD_SPAWN nohup websockify "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
+        >> "$LOG_DIR/websockify.log" 2>&1 </dev/null &
   WS_PID=$!
   for _ in $(seq 1 20); do
     port_open "${NOVNC_PORT}" && break
@@ -164,9 +171,9 @@ if [ "${WS_CODE:-000}" != "101" ] && [ ! -x "$HOME/.local/bin/websockify" ] \
     || pip3 install --user -q -U --break-system-packages websockify >/dev/null 2>&1
   if [ -x "$HOME/.local/bin/websockify" ]; then
     pkill -9 -f websockify >/dev/null 2>&1; sleep 1
-    nohup "$HOME/.local/bin/websockify" --web="$WWW_DIR" \
+    $RD_SPAWN nohup "$HOME/.local/bin/websockify" --web="$WWW_DIR" \
           "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" \
-          >> "$LOG_DIR/websockify.log" 2>&1 &
+          >> "$LOG_DIR/websockify.log" 2>&1 </dev/null &
     sleep 3
     WS_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 \
       -H "Connection: Upgrade" -H "Upgrade: websocket" \
@@ -187,11 +194,22 @@ if [ "$AUTO_OPEN_CHROME" = "true" ]; then
   bash "$SCRIPT_DIR/open-chrome.sh" "$START_URL" || log "（Chrome 启动失败，可忽略，不影响远程桌面）"
 fi
 
+# ---- 7. 守护进程：任一环掉线自动拉起（防 SIGHUP / 进程意外退出）----
+if [ -f "$SCRIPT_DIR/watchdog.sh" ]; then
+  if pgrep -f "watchdog.sh" >/dev/null 2>&1; then
+    log "[7/7] 守护进程已在运行，跳过"
+  else
+    $RD_SPAWN nohup bash "$SCRIPT_DIR/watchdog.sh" >> "$LOG_DIR/watchdog.out" 2>&1 </dev/null &
+    sleep 1
+    log "[7/7] 守护进程已启动 (每 5s 巡检，掉线自动拉起)"
+  fi
+fi
+
 # ---- 总结 ----
 log "==================== 远程桌面启动完成 ===================="
 log "  noVNC URL : http://localhost:${NOVNC_PORT}"
 url="$(desktop_url)"; [ -n "$url" ] && log "  对外 URL  : ${url}"
-log "  排查      : cat ~/.remote-desktop/start.log"
+log "  排查      : rd-status   或   cat ~/.remote-desktop/start.log"
 log "=========================================================="
 
 exit 0
