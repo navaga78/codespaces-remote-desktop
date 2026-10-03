@@ -1,0 +1,60 @@
+# 每周（以及 .devcontainer 有改动时）把桌面镜像构建好推到 GHCR。
+# 作用：别人 fork 后开 codespace 时，devcontainer.json 里的 cacheFrom 能命中这些层，
+#       首次启动从 3~5 分钟缩短到几十秒。
+# 成本：公开仓库的 GitHub Actions 分钟免费，GHCR 公开包也免费。
+name: Build desktop image
+
+on:
+  schedule:
+    # 每周一 03:17 UTC
+    - cron: "17 3 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - ".devcontainer/**"
+      - ".github/workflows/build-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .devcontainer
+          file: Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/codespaces-remote-desktop:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 确保包是公开的（否则 fork 用户拉不到缓存层）
+      - name: Ensure package is public
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X PATCH \
+            "/user/packages/container/codespaces-remote-desktop/visibility" \
+            -f visibility=public || \
+          gh api -X PATCH \
+            "/orgs/${{ github.repository_owner }}/packages/container/codespaces-remote-desktop/visibility" \
+            -f visibility=public
