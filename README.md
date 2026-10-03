@@ -103,7 +103,7 @@ Codespaces 的机器就跑在指定机房，出口 IP 就在那个国家/地区�
 ## ❓ 常见问题
 
 **Q：noVNC 页面能打开，但点「连接」提示无法连接服务器？**
-说明 websockify（6080）起来了、但 x11vnc（5900）没起来，或者反过来。终端里跑 `rd-status`，看 5900 / 6080 哪一个是「✗ 未监听」，然后 `rd-start` 重启一次即可。日志都在 `~/.remote-desktop/` 下。
+镜像里已经修掉了这个坑（改用 pip 最新版 websockify + noVNC 1.7.0，Ubuntu 自带的 websockify 0.10.x 有 WebSocket 升级 bug）。万一还遇到：终端跑 `rd-status` 看 5900 / 6080 哪个没监听，然后 `rd-start` 重启一次。启动脚本自带 WebSocket 握手自检，会打印 `✓ WebSocket 握手正常` 或 `✗ ... HTTP xxx`（正常必须是 `101`）。日志都在 `~/.remote-desktop/` 下。
 
 **Q：免费的 Codespaces 额度够用吗？**
 GitHub 免费账号每月有 **120 核时**（2 核机器约 60 小时）；4 核机器减半。用完按小时计费，建议在 <https://github.com/settings/billing> 设一个消费上限。
@@ -144,7 +144,7 @@ GitHub 免费账号每月有 **120 核时**（2 核机器约 60 小时）；4 �
                                                               XFCE 桌面 + Chrome
 ```
 
-- `.devcontainer/Dockerfile`：Ubuntu 22.04 + XFCE + x11vnc + noVNC + Google Chrome + 中文字体/输入法
+- `.devcontainer/Dockerfile`：Ubuntu 22.04 + XFCE + x11vnc + **noVNC 1.7.0（上游最新版）** + **pip 最新版 websockify** + Google Chrome + 中文字体/输入法
 - `.devcontainer/devcontainer.json`：转发 6080 端口，并在每次启动时执行 `start-desktop.sh`
 - `.devcontainer/scripts/start-desktop.sh`：拉起 Xvfb → XFCE → x11vnc → noVNC → Chrome
 - 机房地区由创建 codespace 时的 `location` 参数决定（`WestUs2` / `EastUs` / `WestEurope` / `SouthEastAsia`）
