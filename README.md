@@ -2,10 +2,16 @@
 
 [English](README.en.md) · 简体中文
 
+[![构建桌面镜像](https://github.com/navaga78/codespaces-remote-desktop/actions/workflows/build-image.yml/badge.svg)](https://github.com/navaga78/codespaces-remote-desktop/actions/workflows/build-image.yml)
+
 用 **GitHub Codespaces 的免费算力**开一台**带 Chrome 的远程电脑桌面**（Linux XFCE + VNC）。
 不用装任何软件、不用自己有服务器：**选好国家 → 点一下按钮 → 浏览器里出现一台完整的电脑桌面，Chrome 已自动打开。**
 
 桌面跑在 GitHub 机房里，它的**公网出口 IP 就在你选的国家/地区**。
+
+> ⚡ **启动很快**：桌面镜像已预构建并发布到公开的 GHCR（`ghcr.io/navaga78/codespaces-remote-desktop:latest`），
+> 每周自动重建一次。`devcontainer.json` 通过 `cacheFrom` 复用它的层，所以**首次启动通常 30 秒 ~ 2 分钟**，
+> 之后每次启动只要几秒。即使拉不到缓存（只会打一条 warning），也会正常从 Dockerfile 构建，不会失败。
 
 ---
 
@@ -18,7 +24,7 @@
 ### 第 2 步：点一个「国家按钮」
 
 下面的按钮已经把**机房地区参数**写进链接里，点了之后 GitHub 就会在对应国家/地区的机房给你开一台电脑。
-按钮用的是相对链接，所以**你 fork 之后不用改任何东西**，直接点即可。
+按钮用的是**相对链接**，所以**你 fork 之后不用改任何东西**，直接点即可。
 
 | 想要的 IP 归属地 | 按钮 | Codespaces 机房 |
 | :--- | :---: | :--- |
@@ -29,7 +35,7 @@
 
 > 打开后如果让你选仓库，选你刚 fork 出来的那个即可（地区已经按按钮预选好了）。
 
-**想要真正的「一步到位」？** 把下面这行粘到终端里（会把 `美国西部` 换成你想要的国家，用户名自动识别）：
+**想要真正的「一步到位」？** 把下面这行粘到终端里（把 `WestUs2` 换成你想要的国家，用户名自动识别）：
 
 ```bash
 gh codespace create -R "$(gh api user --jq .login)/codespaces-remote-desktop" -l WestUs2 -w
@@ -43,9 +49,9 @@ gh codespace create -R "$(gh api user --jq .login)/codespaces-remote-desktop" -l
 https://github.com/codespaces/new?hide_repo_select=true&ref=main&location=WestUs2&repo=你的用户名/codespaces-remote-desktop
 ```
 
-### 第 3 步：等 3~5 分钟，打开桌面
+### 第 3 步：等几十秒，打开桌面
 
-首次启动要构建镜像（约 3~5 分钟，之后再启动只要几秒）。
+镜像层已预构建，通常 **30 秒 ~ 2 分钟**就好（完全没命中缓存时最长约 4 分钟）。
 构建完成后：
 
 1. 在 VS Code 网页版里看 **「端口 / PORTS」** 面板 → 找到 **6080**；
@@ -88,6 +94,7 @@ Codespaces 的机器就跑在指定机房，出口 IP 就在那个国家/地区�
 | `rd-stop` | 停止桌面（codespace 本身还在跑） |
 | `rd-chrome https://example.com` | 在远程桌面上打开某个网页 |
 | `rd-ip` | 查看这台电脑当前的出口 IP 与国家 |
+| `rd-status` | 端口 / 进程 / 日志一站式查看（**出问题先跑这条**） |
 | `rd-info` | 打印桌面访问地址 |
 
 改分辨率 / 语言 / 自动打开的网址：在 <https://github.com/settings/codespaces> 的 Secrets 里加：
@@ -104,8 +111,17 @@ Codespaces 的机器就跑在指定机房，出口 IP 就在那个国家/地区�
 
 ## ❓ 常见问题
 
+**Q：为什么要等？不是说有预构建镜像吗？**
+镜像只缓存了**构建层**，Codespaces 每次仍要新建 VM、挂载存储、跑 `postStartCommand` 拉起桌面，这部分省不掉。有缓存时是 30 秒 ~ 2 分钟，没缓存（比如上游镜像刚好失效）时从 Dockerfile 全量构建，约 4 分钟。
+
 **Q：noVNC 页面能打开，但点「连接」提示无法连接服务器？**
-镜像里已经修掉了这个坑（改用 pip 最新版 websockify + noVNC 1.7.0，Ubuntu 自带的 websockify 0.10.x 有 WebSocket 升级 bug）。万一还遇到：终端跑 `rd-status` 看 5900 / 6080 哪个没监听，然后 `rd-start` 重启一次。启动脚本自带 WebSocket 握手自检，会打印 `✓ WebSocket 握手正常` 或 `✗ ... HTTP xxx`（正常必须是 `101`）。日志都在 `~/.remote-desktop/` 下。
+镜像里已经修掉了这个坑（改用 pip 最新版 websockify + noVNC 1.7.0；Ubuntu 自带的 websockify 0.10.x 有 WebSocket 升级 bug）。万一还遇到：终端跑 `rd-status` 看 5900 / 6080 哪个没监听，然后 `rd-start` 重启一次。启动脚本自带 WebSocket 握手自检，会打印 `✓ WebSocket 握手正常` 或 `✗ ... HTTP xxx`（正常必须是 `101`）。日志都在 `~/.remote-desktop/` 下。
+
+**Q：GHCR 上那个公开镜像会不会泄露我的隐私？**
+不会。镜像内容就是 Dockerfile 里列的那些软件（本来就在公开仓库里），**不含**任何密码 / token / SSH key / 浏览器数据 / 家目录文件——构建在 GitHub 一次性 runner 上跑，只用仓库内容。你在 codespace 里的所有运行时数据都在容器可写层，永远不会被推送。
+
+**Q：不想用上游的 GHCR 镜像怎么办？**
+删掉 `.devcontainer/devcontainer.json` 里的 `cacheFrom` 那一行即可，会完全从 Dockerfile 本地构建（慢一些）。
 
 **Q：免费的 Codespaces 额度够用吗？**
 GitHub 免费账号每月有 **120 核时**（2 核机器约 60 小时）；4 核机器减半。用完按小时计费，建议在 <https://github.com/settings/billing> 设一个消费上限。
@@ -114,7 +130,7 @@ GitHub 免费账号每月有 **120 核时**（2 核机器约 60 小时）；4 �
 在。默认 **30 分钟无操作** codespace 会自动休眠（数据不丢），下次打开会自动重启桌面。可在创建时用 `--idle-timeout` 或在 codespace 设置里调整。
 
 **Q：我在 VS Code 桌面版里怎么用？**
-一样：打开的 codespace → 「端口」面板 → 转发 6080 → 右键设为 Public 或直接用浏览器打开转发地址。
+一样：打开的 codespace → 「端口」面板 → 转发 6080 → 直接用浏览器打开转发地址（建议保持私有）。
 
 **Q：手机 / iPad 能用吗？**
 能。用手机浏览器打开 `https://<codespace名>-6080.app.github.dev` 即可（noVNC 支持触摸操作）。
@@ -123,7 +139,7 @@ GitHub 免费账号每月有 **120 核时**（2 核机器约 60 小时）；4 �
 能，这就是一台完整的 Ubuntu 22.04。`sudo apt-get install ...` 随便装；想固化进镜像，改 `.devcontainer/Dockerfile` 后 rebuild。
 
 **Q：能不能中文输入？**
-可以，已内置 fcitx + 谷歌拼音，桌面右上角/任务栏切换（默认 `Ctrl + 空格`）。
+可以，已内置 fcitx + 谷歌拼音，桌面任务栏切换（默认 `Ctrl + 空格`）。
 
 **Q：会不会被 GitHub 封号？**
 请遵守 [GitHub 可接受使用政策](https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies)。本项目只是把 Codespaces 当成一台普通云主机来跑桌面，**不要**用它做挖矿、 spam、攻击、批量爬取等违反政策的用途。
@@ -147,8 +163,9 @@ GitHub 免费账号每月有 **120 核时**（2 核机器约 60 小时）；4 �
 ```
 
 - `.devcontainer/Dockerfile`：Ubuntu 22.04 + XFCE + x11vnc + **noVNC 1.7.0（上游最新版）** + **pip 最新版 websockify** + Google Chrome + 中文字体/输入法
-- `.devcontainer/devcontainer.json`：转发 6080 端口，并在每次启动时执行 `start-desktop.sh`
-- `.devcontainer/scripts/start-desktop.sh`：拉起 Xvfb → XFCE → x11vnc → noVNC → Chrome
+- `.devcontainer/devcontainer.json`：转发 6080 端口、每次启动执行 `start-desktop.sh`，并通过 `cacheFrom` 复用 GHCR 上的预构建镜像层
+- `.devcontainer/scripts/start-desktop.sh`：拉起 Xvfb → XFCE → x11vnc → noVNC → Chrome，每步都做端口就绪检查，并自检 WebSocket 握手（必须为 101）
+- `.github/workflows/build-image.yml`：每周一 03:17 UTC（以及 `.devcontainer` 有改动时）构建镜像推送到 GHCR，用 `type=inline` 写入缓存元数据，让别人 fork 后也能命中
 - 机房地区由创建 codespace 时的 `location` 参数决定（`WestUs2` / `EastUs` / `WestEurope` / `SouthEastAsia`）
 
 ## 📁 目录结构
@@ -156,17 +173,21 @@ GitHub 免费账号每月有 **120 核时**（2 核机器约 60 小时）；4 �
 ```
 .
 ├── .devcontainer/
-│   ├── devcontainer.json        # Codespaces 配置（端口、环境变量、启动脚本）
+│   ├── devcontainer.json        # Codespaces 配置（端口、环境变量、启动脚本、cacheFrom）
 │   ├── Dockerfile               # 桌面镜像
 │   └── scripts/
-│       ├── common.sh            # 公共变量
+│       ├── common.sh            # 公共变量（含 rd-* 软链接路径解析）
 │       ├── post-create.sh       # 首次创建：快捷方式 / 桌面图标
 │       ├── start-desktop.sh     # 启动桌面（每次 codespace 启动自动执行）
 │       ├── stop-desktop.sh
 │       ├── open-chrome.sh
 │       ├── check-ip.sh          # 查看出口 IP 与国家
+│       ├── status.sh            # rd-status：端口/进程/日志
 │       └── show-info.sh         # 打印桌面访问地址
+├── .github/workflows/
+│   └── build-image.yml          # 每周构建桌面镜像 → GHCR
 ├── README.md
+├── README.en.md
 └── LICENSE
 ```
 
