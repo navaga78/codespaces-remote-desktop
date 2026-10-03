@@ -20,9 +20,10 @@ for pair in "start-desktop:rd-start" "open-chrome:rd-chrome" \
 done
 
 # 3) 准备 noVNC 网页目录（放在家目录下，避免权限问题）
-if [ ! -d "$WWW_DIR/core" ]; then
-  cp -r /usr/share/novnc/. "$WWW_DIR/" 2>/dev/null || true
+if [ ! -f "$WWW_DIR/vnc.html" ]; then
+  cp -r "$NOVNC_SRC"/. "$WWW_DIR/" 2>/dev/null || true
 fi
+log "noVNC 资源来源：$NOVNC_SRC"
 
 # 4) 桌面快捷方式
 mkdir -p "$HOME/Desktop"
