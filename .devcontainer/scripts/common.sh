@@ -38,6 +38,14 @@ WWW_DIR="$LOG_DIR/www"
 mkdir -p "$LOG_DIR" "$WWW_DIR"
 LOG_FILE="$LOG_DIR/start.log"
 
+# noVNC 网页资源目录：优先用镜像里装的最新版 /opt/novnc，回退 apt 版
+NOVNC_SRC=""
+for _d in /opt/novnc /usr/share/novnc; do
+  if [ -f "$_d/vnc.html" ]; then NOVNC_SRC="$_d"; break; fi
+done
+[ -z "$NOVNC_SRC" ] && NOVNC_SRC="/usr/share/novnc"
+unset _d
+
 export LANG="$DESKTOP_LANG"
 export LANGUAGE="${DESKTOP_LANG%.*}"
 export GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx XMODIFIERS=@im=fcitx
@@ -53,8 +61,8 @@ port_open() {
 
 # noVNC 落地页：打开 6080 时自动跳转并连接
 write_novnc_index() {
-  if [ ! -d "$WWW_DIR/core" ]; then
-    cp -r /usr/share/novnc/. "$WWW_DIR/" 2>/dev/null || true
+  if [ ! -f "$WWW_DIR/vnc.html" ]; then
+    cp -r "$NOVNC_SRC"/. "$WWW_DIR/" 2>/dev/null || true
   fi
   {
     echo '<!doctype html><html><head><meta charset="utf-8">'
