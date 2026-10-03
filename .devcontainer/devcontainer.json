@@ -1,7 +1,10 @@
 {
   "name": "Cloud Desktop (XFCE + Chrome + noVNC)",
   "build": {
-    "dockerfile": "Dockerfile"
+    "dockerfile": "Dockerfile",
+    // 复用每周自动构建好的镜像层（见 .github/workflows/build-image.yml），首次启动快很多。
+    // 镜像拉不到只会打印一条 warning，不会导致构建失败；想完全离线自建删掉这行即可。
+    "cacheFrom": "ghcr.io/navaga78/codespaces-remote-desktop:latest"
   },
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
