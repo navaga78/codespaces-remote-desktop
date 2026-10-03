@@ -3,17 +3,20 @@
 set -uo pipefail
 
 # shellcheck source=./common.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+# 软链接调用（rd-start 等）时 dirname 会得到 /usr/local/bin，必须 readlink 到真实路径
+_rd_self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+source "$(cd "$(dirname "$_rd_self")" && pwd)/common.sh"
+unset _rd_self
 
 log "初始化远程桌面环境"
 
 # 1) 脚本可执行
 chmod +x "$SCRIPT_DIR"/*.sh
 
-# 2) 全局命令：rd-start / rd-stop / rd-chrome / rd-ip / rd-info / rd-status
+# 2) 全局命令：rd-start / rd-stop / rd-chrome / rd-ip / rd-info / rd-status / rd-fix
 for pair in "start-desktop:rd-start" "open-chrome:rd-chrome" \
             "stop-desktop:rd-stop" "check-ip:rd-ip" "show-info:rd-info" \
-            "status:rd-status"; do
+            "status:rd-status" "ensure-desktop:rd-fix"; do
   src="${pair%%:*}.sh"
   dst="${pair##*:}"
   sudo ln -sf "$SCRIPT_DIR/$src" "/usr/local/bin/$dst" 2>/dev/null || true
