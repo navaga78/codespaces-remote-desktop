@@ -59,6 +59,14 @@ port_open() {
   (exec 3<>"/dev/tcp/127.0.0.1/$1") >/dev/null 2>&1
 }
 
+# 后台「脱离会话」启动器。
+# 为什么需要：postStartCommand 的 shell 退出时会给子进程发 SIGHUP；
+# 光靠 nohup 不够 —— x11vnc 自己注册了 SIGHUP handler，会覆盖 nohup 的设置而自杀。
+# setsid 让进程进入新的会话/进程组，压根收不到 HUP。
+# 用法：$RD_SPAWN nohup <命令> ... > log 2>&1 </dev/null &
+RD_SPAWN=""
+command -v setsid >/dev/null 2>&1 && RD_SPAWN="setsid"
+
 # noVNC 落地页：打开 6080 时自动跳转并连接
 write_novnc_index() {
   if [ ! -f "$WWW_DIR/vnc.html" ]; then
