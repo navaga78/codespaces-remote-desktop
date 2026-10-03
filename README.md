@@ -95,6 +95,7 @@ Codespaces 的机器就跑在指定机房，出口 IP 就在那个国家/地区�
 | `rd-chrome https://example.com` | 在远程桌面上打开某个网页 |
 | `rd-ip` | 查看这台电脑当前的出口 IP 与国家 |
 | `rd-status` | 端口 / 进程 / 日志一站式查看（**出问题先跑这条**） |
+| `rd-fix` | 自检并补拉掉线的服务（比 `rd-start` 轻量，不会重启 XFCE） |
 | `rd-info` | 打印桌面访问地址 |
 
 改分辨率 / 语言 / 自动打开的网址：在 <https://github.com/settings/codespaces> 的 Secrets 里加：
@@ -115,7 +116,16 @@ Codespaces 的机器就跑在指定机房，出口 IP 就在那个国家/地区�
 镜像只缓存了**构建层**，Codespaces 每次仍要新建 VM、挂载存储、跑 `postStartCommand` 拉起桌面，这部分省不掉。有缓存时是 30 秒 ~ 2 分钟，没缓存（比如上游镜像刚好失效）时从 Dockerfile 全量构建，约 4 分钟。
 
 **Q：noVNC 页面能打开，但点「连接」提示无法连接服务器？**
-镜像里已经修掉了这个坑（改用 pip 最新版 websockify + noVNC 1.7.0；Ubuntu 自带的 websockify 0.10.x 有 WebSocket 升级 bug）。万一还遇到：终端跑 `rd-status` 看 5900 / 6080 哪个没监听，然后 `rd-start` 重启一次。启动脚本自带 WebSocket 握手自检，会打印 `✓ WebSocket 握手正常` 或 `✗ ... HTTP xxx`（正常必须是 `101`）。日志都在 `~/.remote-desktop/` 下。
+先跑 `rd-status`，看是 5900 还是 6080 没监听：
+
+- **6080 没监听** → 网页根本打不开，跑 `rd-start` 重启。
+- **6080 在监听、5900 没监听** → 网页能打开但连不上桌面。日志里若看到 `caught signal: 1`（SIGHUP），说明启动脚本的父 shell 退出时把 x11vnc 带走了。本仓库已用 **`setsid` 脱离会话** + **守护进程每 5 秒自愈** 两层手段根治；如果你是旧版本 fork 过来的，先 **Sync fork → Rebuild container** 再试。
+- 另外镜像已改用 pip 最新版 websockify + noVNC 1.7.0（Ubuntu 自带的 websockify 0.10.x 有 WebSocket 升级 bug，会把握手原样转发给 x11vnc）。
+
+启动脚本自带 WebSocket 握手自检，会打印 `✓ WebSocket 握手正常` 或 `✗ ... HTTP xxx`（正常必须是 `101`）。日志都在 `~/.remote-desktop/` 下。
+
+**Q：桌面会不会自己掉线？**
+不会长期掉线。`watchdog.sh` 每 5 秒检查一次 Xvfb / XFCE / x11vnc / websockify，任何一环挂了自动拉起；`rd-status` 里会显示「守护进程：✓ 运行中」。执行 `rd-stop` 会先放一个 `STOPPED` 标志再退出，不会和守护进程打架。
 
 **Q：GHCR 上那个公开镜像会不会泄露我的隐私？**
 不会。镜像内容就是 Dockerfile 里列的那些软件（本来就在公开仓库里），**不含**任何密码 / token / SSH key / 浏览器数据 / 家目录文件——构建在 GitHub 一次性 runner 上跑，只用仓库内容。你在 codespace 里的所有运行时数据都在容器可写层，永远不会被推送。
@@ -164,7 +174,9 @@ GitHub 免费账号每月有 **120 核时**（2 核机器约 60 小时）；4 �
 
 - `.devcontainer/Dockerfile`：Ubuntu 22.04 + XFCE + x11vnc + **noVNC 1.7.0（上游最新版）** + **pip 最新版 websockify** + Google Chrome + 中文字体/输入法
 - `.devcontainer/devcontainer.json`：转发 6080 端口、每次启动执行 `start-desktop.sh`，并通过 `cacheFrom` 复用 GHCR 上的预构建镜像层
-- `.devcontainer/scripts/start-desktop.sh`：拉起 Xvfb → XFCE → x11vnc → noVNC → Chrome，每步都做端口就绪检查，并自检 WebSocket 握手（必须为 101）
+- `.devcontainer/scripts/start-desktop.sh`：拉起 Xvfb → XFCE → x11vnc → noVNC → Chrome，每步都做端口就绪检查，并自检 WebSocket 握手（必须为 101）。所有后台进程用 `setsid` 脱离会话，避免被 `postStart` 结束时的 SIGHUP 带走
+- `.devcontainer/scripts/watchdog.sh`：守护进程，每 5 秒巡检一轮，掉线自动拉起（Xvfb / XFCE / x11vnc / websockify）
+- `.devcontainer/scripts/ensure-desktop.sh`：每次连接 codespace 时自检一次（`rd-fix`），没就绪就后台补拉
 - `.github/workflows/build-image.yml`：每周一 03:17 UTC（以及 `.devcontainer` 有改动时）构建镜像推送到 GHCR，用 `type=inline` 写入缓存元数据，让别人 fork 后也能命中
 - 机房地区由创建 codespace 时的 `location` 参数决定（`WestUs2` / `EastUs` / `WestEurope` / `SouthEastAsia`）
 
@@ -179,7 +191,9 @@ GitHub 免费账号每月有 **120 核时**（2 核机器约 60 小时）；4 �
 │       ├── common.sh            # 公共变量（含 rd-* 软链接路径解析）
 │       ├── post-create.sh       # 首次创建：快捷方式 / 桌面图标
 │       ├── start-desktop.sh     # 启动桌面（每次 codespace 启动自动执行）
-│       ├── stop-desktop.sh
+│       ├── watchdog.sh          # 守护进程：每 5s 巡检，掉线自动拉起
+│       ├── ensure-desktop.sh    # rd-fix：连接时自检并补拉
+│       ├── stop-desktop.sh      # rd-stop：停止桌面（会先停守护进程）
 │       ├── open-chrome.sh
 │       ├── check-ip.sh          # 查看出口 IP 与国家
 │       ├── status.sh            # rd-status：端口/进程/日志
