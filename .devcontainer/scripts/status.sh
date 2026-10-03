@@ -22,16 +22,23 @@ unset _rd_dir
 
 echo "──────────── 进程（去重计数）────────────"
 ps -eo args --no-headers 2>/dev/null \
-  | grep -E "Xvfb :[0-9]|x11vnc|websockify|startxfce4|xfwm4|xfce4-panel|xfsettingsd|xfdesktop|google-chrome-stable|fcitx" \
+  | grep -E "Xvfb :[0-9]|x11vnc|websockify|watchdog.sh|startxfce4|xfwm4|xfce4-panel|xfsettingsd|xfdesktop|google-chrome-stable|fcitx" \
   | grep -v grep \
   | sed -E 's/^[[:space:]]+//' \
   | sort | uniq -c | sort -rn \
-  | awk '{n=$1; $1=""; printf "  x%-4s%s\n", n, substr($0,2)>180?substr($0,2,180)"…":substr($0,2)}' \
+  | awk '{n=$1; $1=""; s=substr($0,2); if (length(s) > 180) s = substr(s,1,180) "…"; printf "  x%-4s%s\n", n, s}' \
   || echo "  （没有匹配到进程）"
 
 WS_N="$(pgrep -cf websockify 2>/dev/null || echo 0)"
+WD_N="$(pgrep -fc 'watchdog\.sh' 2>/dev/null || echo 0)"
 echo
 echo "  websockify 进程/线程数：${WS_N}   （数字大是正常的：每路连接会派生一个）"
+if [ "${WD_N:-0}" -gt 0 ]; then
+  echo "  守护进程：✓ 运行中（掉线会自动拉起）"
+else
+  echo "  守护进程：✗ 未运行（SIGHUP 后不会自愈；执行 rd-start 重启）"
+fi
+[ -f "$LOG_DIR/STOPPED" ] && echo "  注意：存在 STOPPED 标志，守护进程不会工作（rd-start 会清除）"
 echo
 
 echo "──────────── 端口 ────────────"
@@ -69,7 +76,7 @@ echo "  分辨率：${VNC_RESOLUTION}   语言：${DESKTOP_LANG}"
 
 echo
 echo "──────────── 最近日志 ────────────"
-for f in start.log xvfb.log xfce.log x11vnc.log x11vnc.out websockify.log websockify.out chrome.log; do
+for f in start.log watchdog.log watchdog.out xvfb.log xfce.log x11vnc.log x11vnc.out websockify.log websockify.out chrome.log; do
   if [ -s "$LOG_DIR/$f" ]; then
     echo "─── $f (tail -12) ───"
     tail -12 "$LOG_DIR/$f"
