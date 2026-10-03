@@ -1,5 +1,7 @@
 # ☁️ codespaces-remote-desktop
 
+[English](README.en.md) · 简体中文
+
 用 **GitHub Codespaces 的免费算力**开一台**带 Chrome 的远程电脑桌面**（Linux XFCE + VNC）。
 不用装任何软件、不用自己有服务器：**选好国家 → 点一下按钮 → 浏览器里出现一台完整的电脑桌面，Chrome 已自动打开。**
 
