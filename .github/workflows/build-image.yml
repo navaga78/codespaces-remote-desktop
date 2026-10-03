@@ -44,8 +44,11 @@ jobs:
           file: .devcontainer/Dockerfile
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/codespaces-remote-desktop:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # 关键：必须用 type=inline 把缓存元数据写进镜像，
+          # 否则 fork 用户在 Codespaces 里 `docker build --cache-from` 命中不到任何层。
+          # cache-from 用 registry 类型，这样本 workflow 每周重跑时也能复用上次结果。
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/codespaces-remote-desktop:latest
+          cache-to: type=inline,mode=max
 
       # 确保包是公开的（否则 fork 用户拉不到缓存层）
       - name: Ensure package is public
