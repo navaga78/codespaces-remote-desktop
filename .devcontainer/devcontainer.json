@@ -12,6 +12,11 @@
     "6080": {
       "label": "🖥️ 远程桌面 (noVNC)",
       "onAutoForward": "openPreview"
+    },
+    // 5900 是 x11vnc 原生 VNC 端口，仅容器内使用；不让 VS Code 自动转发，减少暴露面
+    "5900": {
+      "label": "VNC 直连（容器内，勿公开）",
+      "onAutoForward": "ignore"
     }
   },
 
