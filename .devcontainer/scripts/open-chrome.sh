@@ -4,7 +4,10 @@
 set -uo pipefail
 
 # shellcheck source=./common.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+# 软链接调用（rd-start 等）时 dirname 会得到 /usr/local/bin，必须 readlink 到真实路径
+_rd_self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+source "$(cd "$(dirname "$_rd_self")" && pwd)/common.sh"
+unset _rd_self
 
 URL="${1:-$START_URL}"
 W="${VNC_RESOLUTION%x*}"
