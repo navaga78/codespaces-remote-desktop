@@ -106,11 +106,13 @@ write_novnc_index
 # 注意 2：不要用 --log-file（部分版本不支持），直接重定向到日志
 # 注意 3：优先用 pip 装的新版 websockify（Ubuntu 22.04 自带的 0.10.x 有 WS 升级 bug，
 #         会把握手原样转发给 x11vnc，表现为「页面能打开但连不上」）
+# 优先 pip 版（/usr/local/bin 或 ~/.local/bin），最后才是 apt 版 /usr/bin/websockify
 WS_CMD=""
-for cand in "$HOME/.local/bin/websockify" "$HOME/.local/bin/ws-websockify" "$(command -v websockify 2>/dev/null)"; do
-  if [ -n "$cand" ] && [ -x "$cand" ]; then WS_CMD="$cand"; break; fi
+for _c in /usr/local/bin/websockify "$HOME/.local/bin/websockify" "$(command -v websockify 2>/dev/null)"; do
+  if [ -n "$_c" ] && [ -x "$_c" ]; then WS_CMD="$_c"; break; fi
 done
 [ -z "$WS_CMD" ] && WS_CMD="python3 -m websockify"
+unset _c
 log "  使用 websockify: $WS_CMD"
 
 nohup $WS_CMD --web="$WWW_DIR" \
