@@ -39,8 +39,9 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .devcontainer
-          file: Dockerfile
+          # 注意：buildx 的 file 是相对「仓库根目录」解析的，不是相对 context
+          context: .
+          file: .devcontainer/Dockerfile
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/codespaces-remote-desktop:latest
           cache-from: type=gha
